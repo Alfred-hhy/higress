@@ -131,11 +131,11 @@ func TestMaskKeywords(t *testing.T) {
 				t.Fatalf("Detail len=%d", len(resp.Data.Detail))
 			}
 			d := resp.Data.Detail[0]
-			if d.Suggestion != "mask" || d.Type != "sensitiveData" || d.Level != "S3" {
+			if d.Suggestion != "mask" || d.Type != "sensitiveData" || d.Level != "S4" {
 				t.Fatalf("detail=%+v", d)
 			}
-			if len(d.Result) == 0 || d.Result[0].Ext == nil || d.Result[0].Ext.Desensitization == "" {
-				t.Fatalf("expected Ext.Desensitization, got %+v", d.Result)
+			if len(d.Result) == 0 || d.Result[0].Ext == nil || d.Result[0].Ext.Desensitization == "" || len(d.Result[0].Ext.SensitiveData) == 0 {
+				t.Fatalf("expected Ext.Desensitization and Ext.SensitiveData, got %+v", d.Result)
 			}
 		})
 	}

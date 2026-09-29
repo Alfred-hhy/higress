@@ -4,6 +4,8 @@
 
 监听地址：`:8090`。**不校验** ACS3-HMAC-SHA256 签名（仅检查 `Authorization` 头是否存在），便于 e2e 使用 mock AK/SK。
 
+模拟的 API 版本为 `2022-03-02`（即插件请求中的 `x-acs-version`）。响应字段按插件 `config.Response` 的解析结构实现；若阿里云 API 或插件解析结构升级，需同步更新本 mock。
+
 ## 接口说明
 
 ### `GET /health`
@@ -59,8 +61,28 @@
 | 内容包含 | RiskLevel | Suggestion | Detail |
 |----------|-----------|------------|--------|
 | `BLOCK` / `违规` / `illegal`（大小写不敏感仅对 illegal） | `high` | `block` | `contentModeration` / `high`，含 Advice |
-| `MASK` / `敏感` | `none` | `mask` | `sensitiveData` / `S3`，`Ext.Desensitization=[MASKED]` |
+| `MASK` / `敏感` | `none` | `mask` | `sensitiveData` / `S4`，`Ext.Desensitization=[MASKED]`，`Ext.SensitiveData` |
 | 其他 | `none` | `pass` | 无 |
+
+## 插件配置要求
+
+mock 只返回阿里云文档列出的等级（`high` / `none`；敏感等级 `S4` 为文本护栏文档中的最高等级），不会返回 `max`（`max` 只是插件配置项中“只检测不拦截”的阈值）。结合插件默认配置（`SetDefaultValues`）与 `EvaluateRisk` 的判定逻辑：
+
+| action | 期望结果 | 默认配置下 | 需要的插件配置 |
+|--------|----------|------------|----------------|
+| `TextModerationPlus` | block | 拦截（`riskLevelBar` 默认 `high`） | 无 |
+| `TextModerationPlus` | mask | 不支持（脱敏仅适用于 MultiModalGuard） | — |
+| `MultiModalGuard` | block | 放行（`contentModerationLevelBar` 默认 `max`，即只检测不拦截） | `contentModerationLevelBar: high` |
+| `MultiModalGuard` | mask | 拦截（`riskAction` 默认 `block`） | `riskAction: mask`（`sensitiveDataLevelBar` 默认 `S4` 即可） |
+
+MultiModalGuard e2e 测试配置示例（仅列出与判定相关的字段）：
+
+```yaml
+action: MultiModalGuard
+checkRequest: true
+contentModerationLevelBar: high   # BLOCK / 违规 / illegal → 拦截
+riskAction: mask                  # MASK / 敏感 → 脱敏
+```
 
 ## 本地运行
 

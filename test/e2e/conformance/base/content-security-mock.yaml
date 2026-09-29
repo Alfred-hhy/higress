@@ -12,13 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: higress-conformance-ai-backend
-  labels:
-    higress-conformance: infra
----
+# The higress-conformance-ai-backend Namespace is declared in llm-mock.yaml,
+# which is listed before this file in the suite's BaseManifests.
 apiVersion: v1
 kind: Pod
 metadata:

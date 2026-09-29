@@ -69,7 +69,8 @@ type Result struct {
 }
 
 type Ext struct {
-	Desensitization string `json:"Desensitization,omitempty"`
+	Desensitization string   `json:"Desensitization,omitempty"`
+	SensitiveData   []string `json:"SensitiveData,omitempty"`
 }
 
 type serviceParameters struct {
@@ -166,10 +167,16 @@ func extractContent(rawBody []byte) string {
 
 // buildResponse applies keyword-based risk simulation:
 //   - content containing BLOCK / 违规 / illegal → RiskLevel high, Suggestion block
-//   - content containing MASK / 敏感 → Detail with Suggestion mask (sensitiveData / S3)
+//   - content containing MASK / 敏感 → Detail with Suggestion mask (sensitiveData / S4)
 //   - otherwise → RiskLevel none (pass)
 //
 // Block keywords take precedence when both match.
+//
+// Levels stay within the values the real API returns. With the plugin's default
+// config, "high" blocks for TextModerationPlus (riskLevelBar=high) and S4 reaches
+// the default sensitiveDataLevelBar (S4). MultiModalGuard's default
+// contentModerationLevelBar is "max" (detect only, never block), so blocking
+// there requires contentModerationLevelBar=high; see README.
 func buildResponse(content string) Response {
 	reqID := newRequestID()
 	resp := Response{
@@ -213,13 +220,13 @@ func buildResponse(content string) Response {
 				{
 					Suggestion: "mask",
 					Type:       "sensitiveData",
-					Level:      "S3",
+					Level:      "S4",
 					Result: []Result{
 						{
 							Label:       "mock_mask",
 							Description: "keyword MASK/敏感 matched",
 							Confidence:  1.0,
-							Ext:         &Ext{Desensitization: masked},
+							Ext:         &Ext{Desensitization: masked, SensitiveData: []string{"mock-sensitive-data"}},
 						},
 					},
 				},
