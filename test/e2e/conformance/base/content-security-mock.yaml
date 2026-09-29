@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The higress-conformance-ai-backend Namespace is declared in llm-mock.yaml,
-# which is listed before this file in the suite's BaseManifests.
+# Not registered in the suite's BaseManifests: the image is not published yet.
+# Tests that need the mock should list this file in their Manifests; the
+# higress-conformance-ai-backend Namespace comes from the llm-mock.yaml base manifest.
 apiVersion: v1
 kind: Pod
 metadata:
