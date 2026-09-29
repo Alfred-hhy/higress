@@ -34,6 +34,10 @@ const (
 	maxBodySize   = 10 << 20 // 10MB
 )
 
+// timeoutDelay is longer than ai-security-guard's default timeout (2000ms).
+// It is a variable so that tests can shorten it.
+var timeoutDelay = 3 * time.Second
+
 // Response mirrors plugins/wasm-go/extensions/ai-security-guard/config.Response.
 type Response struct {
 	Code      int    `json:"Code"`
@@ -144,6 +148,33 @@ func moderationHandler(w http.ResponseWriter, r *http.Request) {
 		snippet = snippet[:128] + "..."
 	}
 	log.Printf("Method=%s Path=%s Service=%s Action=%s Content=%q", r.Method, r.URL.Path, service, action, snippet)
+
+	// Abnormal scenarios take precedence over risk verdicts.
+	switch {
+	case strings.Contains(content, "THROTTLE"):
+		// Gateway throttling: HTTP 429 with a string Code.
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{
+			"Code":      "Throttling.User",
+			"Message":   "Request was denied due to user flow control.",
+			"RequestId": newRequestID(),
+		})
+		return
+	case strings.Contains(content, "ERROR"):
+		// Business error: HTTP 200 but Code != 200.
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"Code":      500,
+			"Message":   "mock business error",
+			"RequestId": newRequestID(),
+		})
+		return
+	case strings.Contains(content, "TIMEOUT"):
+		// Respond slower than the plugin's timeout, then return the normal verdict.
+		select {
+		case <-time.After(timeoutDelay):
+		case <-r.Context().Done():
+			return
+		}
+	}
 
 	resp := buildResponse(content)
 	writeJSON(w, http.StatusOK, resp)

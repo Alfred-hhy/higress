@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func postModeration(t *testing.T, content, service string, withAuth bool) *httptest.ResponseRecorder {
@@ -146,6 +147,85 @@ func TestBlockTakesPrecedenceOverMask(t *testing.T) {
 	resp := decodeResponse(t, rr)
 	if resp.Data.RiskLevel != "high" || resp.Data.Suggestion != "block" {
 		t.Fatalf("want block precedence, got RiskLevel=%q Suggestion=%q", resp.Data.RiskLevel, resp.Data.Suggestion)
+	}
+}
+
+func TestMaskExtJSONShape(t *testing.T) {
+	// Data.Detail[].Result[].Ext.SensitiveData must be a string array, as parsed by
+	// the plugin's config.Ext.
+	rr := postModeration(t, "MASK phone", "query_security_check", true)
+	var m struct {
+		Data struct {
+			Detail []struct {
+				Result []struct {
+					Ext map[string]interface{} `json:"Ext"`
+				} `json:"Result"`
+			} `json:"Detail"`
+		} `json:"Data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	ext := m.Data.Detail[0].Result[0].Ext
+	if _, ok := ext["Desensitization"].(string); !ok {
+		t.Fatalf("Ext.Desensitization not a string: %v", ext)
+	}
+	data, ok := ext["SensitiveData"].([]interface{})
+	if !ok || len(data) == 0 {
+		t.Fatalf("Ext.SensitiveData not a non-empty array: %v", ext)
+	}
+	if _, ok := data[0].(string); !ok {
+		t.Fatalf("Ext.SensitiveData element not a string: %v", data)
+	}
+}
+
+func TestThrottle(t *testing.T) {
+	rr := postModeration(t, "please THROTTLE", "llm_query_moderation", true)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("status=%d want 429", rr.Code)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["Code"] != "Throttling.User" || m["RequestId"] == "" {
+		t.Fatalf("unexpected body: %v", m)
+	}
+}
+
+func TestBusinessError(t *testing.T) {
+	rr := postModeration(t, "trigger ERROR", "llm_query_moderation", true)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200", rr.Code)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["Code"] != float64(500) {
+		t.Fatalf("Code=%v want 500", m["Code"])
+	}
+	if _, ok := m["Data"]; ok {
+		t.Fatalf("business error should not carry Data: %v", m)
+	}
+}
+
+func TestTimeoutDelaysResponse(t *testing.T) {
+	old := timeoutDelay
+	timeoutDelay = 50 * time.Millisecond
+	t.Cleanup(func() { timeoutDelay = old })
+
+	start := time.Now()
+	rr := postModeration(t, "TIMEOUT please", "llm_query_moderation", true)
+	if elapsed := time.Since(start); elapsed < timeoutDelay {
+		t.Fatalf("responded after %v, want >= %v", elapsed, timeoutDelay)
+	}
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d", rr.Code)
+	}
+	resp := decodeResponse(t, rr)
+	if resp.Code != 200 || resp.Data.Suggestion != "pass" {
+		t.Fatalf("unexpected response after delay: %+v", resp)
 	}
 }
 

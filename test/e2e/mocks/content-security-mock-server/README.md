@@ -64,6 +64,18 @@
 | `MASK` / `敏感` | `none` | `mask` | `sensitiveData` / `S4`，`Ext.Desensitization=[MASKED]`，`Ext.SensitiveData` |
 | 其他 | `none` | `pass` | 无 |
 
+### 异常场景
+
+异常关键词优先于上面的风险判定（`THROTTLE` > `ERROR` > `TIMEOUT`）：
+
+| 内容包含 | 响应 | 插件行为（TextModerationPlus / MultiModalGuard，请求与响应阶段一致） |
+|----------|------|----------------------------------------------------------------------|
+| `ERROR` | HTTP 200，`{"Code":500,"Message":"mock business error","RequestId":"..."}` | `Code != 200`，fail-open：放行原始请求/响应 |
+| `THROTTLE` | HTTP 429，`{"Code":"Throttling.User","Message":"Request was denied due to user flow control.","RequestId":"..."}` | HTTP 状态码非 200，fail-open：放行 |
+| `TIMEOUT` | 延迟 3s 后返回正常判定结果 | 超过插件默认 `timeout`（2000ms），回调收到 502，fail-open：放行 |
+
+插件侧对应逻辑见 `lvwang/*/text/openai.go` 与 `lvwang/common/text/openai.go` 中 `statusCode != 200 || Code != 200` 分支；若测试配置了大于 3000ms 的 `timeout`，`TIMEOUT` 将不会触发超时。
+
 ## 插件配置要求
 
 mock 只返回阿里云文档列出的等级（`high` / `none`；敏感等级 `S4` 为文本护栏文档中的最高等级），不会返回 `max`（`max` 只是插件配置项中“只检测不拦截”的阈值）。结合插件默认配置（`SetDefaultValues`）与 `EvaluateRisk` 的判定逻辑：
